@@ -3,9 +3,9 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using Microsoft.Build.Utilities;
-using Xamarin.Build;
 
 namespace Microsoft.Android.Build.Tasks
 {
@@ -62,8 +62,8 @@ namespace Microsoft.Android.Build.Tasks
 				logCodedError (prefix + "7017", ex.ToString ());
 			else if (ex is TypeInitializationException)
 				logCodedError (prefix + "7018", ex.ToString ());
-			else if (ex is UnauthorizedAccessException)
-				logCodedError (prefix + "7019", ex.ToString ());
+			else if (ex is UnauthorizedAccessException uaex)
+				logCodedError (prefix + "7019", GetFileLockedExceptionMessage (uaex));
 			else if (ex is ApplicationException)
 				logCodedError (prefix + "7020", ex.ToString ());
 			else if (ex is KeyNotFoundException)
@@ -80,10 +80,35 @@ namespace Microsoft.Android.Build.Tasks
 				logCodedError (prefix + "7027", ex.ToString ());
 			else if (ex is FileNotFoundException)		// IOException
 				logCodedError (prefix + "7028", ex.ToString ());
-			else if (ex is IOException) 
-				logCodedError (prefix + "7024", ex.ToString ());
+			else if (ex is IOException ioex)
+				logCodedError (prefix + "7024", GetFileLockedExceptionMessage (ioex));
 			else
 				logCodedError (prefix + "7000", ex.ToString ());
+		}
+
+		static string GetFileLockedExceptionMessage (Exception ex)
+		{
+			// If we find a file path in the message, and the file exists, check if it's locked
+			// en-US message is:
+			// The process cannot access the file 'D:\temp\tmpw5mhqp.tmp' because it is being used by another process.
+			var matches = Regex.Matches (ex.Message, @"'([^']+)'");
+			for (int i = 0; i < matches.Count; ++i) {
+				string path = matches [i].Groups [1].Value;
+				if (!File.Exists (path)) {
+					continue;
+				}
+				string processes = LockCheck.GetLockedFileMessage (path);
+				if (string.IsNullOrEmpty (processes)) {
+					continue;
+				}
+				return $"{processes}.{Environment.NewLine}{ex.ToString ()}";
+			}
+			return ex.ToString ();
+		}
+
+		public static void LogUnhandledToolError (this TaskLoggingHelper log, string prefix, string toolOutput)
+		{
+			log.LogCodedError ($"XA{prefix}0000", toolOutput);
 		}
 	}
 }
